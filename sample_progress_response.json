@@ -1,0 +1,180 @@
+{
+  "success": true,
+  "data": {
+    "summary": {
+      "userId": "123e4567-e89b-12d3-a456-426614174000",
+      "courseId": "987fcdeb-51a2-43d1-9c4e-123456789abc",
+      "courseTitle": "Complete React Development Course",
+      "totalLectures": 45,
+      "completedLectures": 32,
+      "lectureCompletionPercentage": 85.5,
+      "totalAssignments": 8,
+      "submittedAssignments": 6,
+      "averageAssignmentScore": 87.3,
+      "totalQuizzes": 12,
+      "completedQuizzes": 10,
+      "averageQuizScore": 82.1,
+      "passedQuizzes": 9,
+      "totalLiveClasses": 6,
+      "attendedLiveClasses": 5,
+      "liveAttendancePercentage": 83.3,
+      "overallCompletionPercentage": 78.4,
+      "totalTimeSpent": 42.5,
+      "lastActivityDate": "2024-01-15T10:30:00Z",
+      "currentStreak": 7,
+      "lastUpdated": "2024-01-15T12:00:00Z"
+    },
+    "lectureProgress": {
+      "lectures": [
+        {
+          "id": "lec-001",
+          "title": "Introduction to React",
+          "completionPercentage": 100,
+          "isCompleted": true,
+          "watchTime": 1800,
+          "totalDuration": 1800,
+          "lastWatchedAt": "2024-01-10T14:30:00Z"
+        },
+        {
+          "id": "lec-002",
+          "title": "JSX and Components",
+          "completionPercentage": 75,
+          "isCompleted": false,
+          "watchTime": 1350,
+          "totalDuration": 1800,
+          "lastWatchedAt": "2024-01-11T16:45:00Z"
+        }
+      ],
+      "chartData": {
+        "completed": 32,
+        "remaining": 13
+      }
+    },
+    "assignmentProgress": {
+      "assignments": [
+        {
+          "id": "assign-001",
+          "title": "Build a Todo App",
+          "status": "graded",
+          "score": 85,
+          "maxScore": 100,
+          "submittedAt": "2024-01-12T18:00:00Z",
+          "gradedAt": "2024-01-13T10:00:00Z"
+        },
+        {
+          "id": "assign-002",
+          "title": "React Hooks Exercise",
+          "status": "submitted",
+          "score": null,
+          "maxScore": 100,
+          "submittedAt": "2024-01-14T20:30:00Z",
+          "gradedAt": null
+        }
+      ],
+      "chartData": [
+        {
+          "name": "Todo App",
+          "score": 85,
+          "maxScore": 100,
+          "percentage": 85,
+          "status": "graded"
+        },
+        {
+          "name": "Hooks Exercise",
+          "score": 0,
+          "maxScore": 100,
+          "percentage": 0,
+          "status": "submitted"
+        }
+      ]
+    },
+    "quizPerformance": {
+      "quizzes": [
+        {
+          "id": "quiz-001",
+          "title": "React Basics Quiz",
+          "score": 90,
+          "maxScore": 100,
+          "percentage": 90,
+          "isPassed": true,
+          "completedAt": "2024-01-08T15:20:00Z",
+          "timeSpent": 900
+        },
+        {
+          "id": "quiz-002",
+          "title": "State Management Quiz",
+          "score": 75,
+          "maxScore": 100,
+          "percentage": 75,
+          "isPassed": true,
+          "completedAt": "2024-01-12T11:15:00Z",
+          "timeSpent": 1200
+        }
+      ],
+      "chartData": [
+        {
+          "name": "React Basics",
+          "score": 90,
+          "isPassed": true,
+          "completedAt": "2024-01-08T15:20:00Z",
+          "timeSpent": 900
+        },
+        {
+          "name": "State Management",
+          "score": 75,
+          "isPassed": true,
+          "completedAt": "2024-01-12T11:15:00Z",
+          "timeSpent": 1200
+        }
+      ],
+      "performanceOverTime": [
+        {
+          "attempt": 1,
+          "score": 90,
+          "date": "2024-01-08T15:20:00Z",
+          "quizName": "React Basics Quiz"
+        },
+        {
+          "attempt": 2,
+          "score": 75,
+          "date": "2024-01-12T11:15:00Z",
+          "quizName": "State Management Quiz"
+        }
+      ]
+    },
+    "liveAttendance": {
+      "attendance": [
+        {
+          "id": "live-001",
+          "title": "React Fundamentals Live Session",
+          "isPresent": true,
+          "duration": 3600,
+          "totalDuration": 3600,
+          "attendancePercentage": 100,
+          "joinedAt": "2024-01-05T14:00:00Z",
+          "leftAt": "2024-01-05T15:00:00Z"
+        },
+        {
+          "id": "live-002",
+          "title": "Advanced Hooks Workshop",
+          "isPresent": false,
+          "duration": 0,
+          "totalDuration": 3600,
+          "attendancePercentage": 0,
+          "joinedAt": null,
+          "leftAt": null
+        }
+      ],
+      "chartData": {
+        "attended": 5,
+        "missed": 1
+      }
+    },
+    "activityMetrics": {
+      "totalTimeSpent": 42.5,
+      "lastActivityDate": "2024-01-15T10:30:00Z",
+      "currentStreak": 7,
+      "totalActivities": 156
+    }
+  }
+}
