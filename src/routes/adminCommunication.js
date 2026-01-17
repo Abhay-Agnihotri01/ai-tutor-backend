@@ -5,7 +5,8 @@ import {
   getCommunicationWithReplies,
   replyToCommunication,
   updateCommunicationStatus,
-  getInstructors
+  getInstructors,
+  getUnreadCount
 } from '../controllers/adminCommunicationController.js';
 import { authenticate, authorize } from '../middleware/auth.js';
 
@@ -13,7 +14,7 @@ const router = express.Router();
 
 // Test endpoint (no auth required)
 router.get('/test', (req, res) => {
-  res.json({ 
+  res.json({
     message: 'Admin communications route is working',
     timestamp: new Date().toISOString()
   });
@@ -28,10 +29,14 @@ router.get('/', getCommunications);
 router.get('/communications', getCommunications);
 
 // Create new communication
+router.post('/', createCommunication);
 router.post('/communications', createCommunication);
 
 // Get instructors (for admin)
 router.get('/instructors', authorize('admin'), getInstructors);
+
+// Get unread count
+router.get('/unread-count', getUnreadCount);
 
 // Get specific communication with replies (both paths)
 router.get('/:id', getCommunicationWithReplies);

@@ -5,7 +5,8 @@ import {
   getMessages,
   sendMessage,
   getOnlineUsers,
-  createChatRoom
+  createChatRoom,
+  markRoomAsRead
 } from '../controllers/groupChatController.js';
 
 const router = express.Router();
@@ -18,6 +19,9 @@ router.get('/rooms/:roomId/messages', authenticateToken, getMessages);
 
 // Send a message to a room
 router.post('/rooms/:roomId/messages', authenticateToken, sendMessage);
+
+// Mark room as read
+router.post('/rooms/:roomId/read', authenticateToken, markRoomAsRead);
 
 // Get online users
 router.get('/online-users', authenticateToken, getOnlineUsers);

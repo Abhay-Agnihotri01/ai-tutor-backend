@@ -18,8 +18,8 @@ const getCommunications = async (req, res) => {
         *,
         sender:users!senderId(id, firstName, lastName, email, role),
         receiver:users!receiverId(id, firstName, lastName, email, role),
-        admin_communication_replies(count)
-      `, { count: 'exact' });
+        admin_communication_replies(id, createdAt, isFromAdmin)
+      `);
 
     if (status) query = query.eq('status', status);
     if (category) query = query.eq('category', category);
@@ -41,19 +41,34 @@ const getCommunications = async (req, res) => {
       throw error;
     }
 
-    // Format communications with proper names and reply count
-    const formattedCommunications = (communications || []).map(comm => ({
-      ...comm,
-      sender: comm.sender ? {
-        ...comm.sender,
-        name: `${comm.sender.firstName} ${comm.sender.lastName}`
-      } : null,
-      receiver: comm.receiver ? {
-        ...comm.receiver,
-        name: `${comm.receiver.firstName} ${comm.receiver.lastName}`
-      } : null,
-      replyCount: comm.admin_communication_replies?.[0]?.count || 0
-    }));
+    // Format communications with proper names and REAL unread count
+    const formattedCommunications = (communications || []).map(comm => {
+      // Calculate unread count based on role
+      let unreadCount = 0;
+      const replies = comm.admin_communication_replies || [];
+
+      if (userRole === 'admin') {
+        const lastRead = comm.adminLastReadAt ? new Date(comm.adminLastReadAt) : new Date(0);
+        unreadCount = replies.filter(r => !r.isFromAdmin && new Date(r.createdAt) > lastRead).length;
+      } else {
+        const lastRead = comm.userLastReadAt ? new Date(comm.userLastReadAt) : new Date(0);
+        unreadCount = replies.filter(r => r.isFromAdmin && new Date(r.createdAt) > lastRead).length;
+      }
+
+      return {
+        ...comm,
+        sender: comm.sender ? {
+          ...comm.sender,
+          name: `${comm.sender.firstName} ${comm.sender.lastName}`
+        } : null,
+        receiver: comm.receiver ? {
+          ...comm.receiver,
+          name: `${comm.receiver.firstName} ${comm.receiver.lastName}`
+        } : null,
+        replyCount: replies.length, // Total replies
+        unreadCount: unreadCount     // Real unread replies
+      };
+    });
 
     res.json({
       communications: formattedCommunications,
@@ -122,7 +137,7 @@ const createCommunication = async (req, res) => {
 const getCommunicationWithReplies = async (req, res) => {
   try {
     const { id } = req.params;
-    
+
     const { data: communication, error: commError } = await supabase
       .from('admin_communications')
       .select(`
@@ -219,10 +234,14 @@ const replyToCommunication = async (req, res) => {
       throw replyError;
     }
 
-    // Update communication status
+    // Update communication status based on who replied
+    // If Admin replies -> 'replied' (Instructor/Student sees this as new)
+    // If User replies -> 'unread' (Admin sees this as new)
+    const newStatus = isFromAdmin ? 'replied' : 'unread';
+
     await supabase
       .from('admin_communications')
-      .update({ status: 'replied', updatedAt: new Date().toISOString() })
+      .update({ status: newStatus, updatedAt: new Date().toISOString() })
       .eq('id', id);
 
     console.log('Reply created:', reply);
@@ -233,15 +252,31 @@ const replyToCommunication = async (req, res) => {
   }
 };
 
-// Update communication status
+// Update communication status & mark as read
 const updateCommunicationStatus = async (req, res) => {
   try {
     const { id } = req.params;
     const { status } = req.body;
+    const userId = req.user?.id;
+    const userRole = req.user?.role;
+
+    if (!userId) {
+      return res.status(401).json({ message: 'User not authenticated' });
+    }
+
+    const updates = { updatedAt: new Date().toISOString() };
+    if (status) updates.status = status;
+
+    // Update read timestamp based on role
+    if (userRole === 'admin') {
+      updates.adminLastReadAt = new Date().toISOString();
+    } else {
+      updates.userLastReadAt = new Date().toISOString();
+    }
 
     const { error } = await supabase
       .from('admin_communications')
-      .update({ status, updatedAt: new Date().toISOString() })
+      .update(updates)
       .eq('id', id);
 
     if (error) throw error;
@@ -249,6 +284,70 @@ const updateCommunicationStatus = async (req, res) => {
     res.json({ message: 'Status updated successfully' });
   } catch (error) {
     res.status(500).json({ message: 'Error updating status', error: error.message });
+  }
+};
+
+// Get unread count for badge (real unread messages)
+const getUnreadCount = async (req, res) => {
+  try {
+    const userId = req.user?.id;
+    const userRole = req.user?.role;
+
+    if (!userId) {
+      return res.status(401).json({ message: 'User not authenticated' });
+    }
+
+    // 1. Get user's communications
+    let commsQuery = supabase
+      .from('admin_communications')
+      .select('id, userLastReadAt, adminLastReadAt');
+
+    if (userRole !== 'admin') {
+      commsQuery = commsQuery.or(`senderId.eq.${userId},receiverId.eq.${userId}`);
+    }
+
+    const { data: comms, error: commsError } = await commsQuery;
+
+    if (commsError) throw commsError;
+    if (!comms || comms.length === 0) return res.json({ count: 0 });
+
+    const commIds = comms.map(c => c.id);
+
+    // 2. Get all replies for these communications
+    const { data: replies, error: repliesError } = await supabase
+      .from('admin_communication_replies')
+      .select('communicationId, createdAt, isFromAdmin')
+      .in('communicationId', commIds);
+
+    if (repliesError) throw repliesError;
+
+    // 3. Calculate unread count
+    let unreadCount = 0;
+
+    comms.forEach(comm => {
+      const commReplies = replies.filter(r => r.communicationId === comm.id);
+
+      if (userRole === 'admin') {
+        // Count user replies newer than adminLastReadAt
+        const lastRead = comm.adminLastReadAt ? new Date(comm.adminLastReadAt) : new Date(0);
+        const newReplies = commReplies.filter(r =>
+          !r.isFromAdmin && new Date(r.createdAt) > lastRead
+        );
+        unreadCount += newReplies.length;
+      } else {
+        // Count admin replies newer than userLastReadAt
+        const lastRead = comm.userLastReadAt ? new Date(comm.userLastReadAt) : new Date(0);
+        const newReplies = commReplies.filter(r =>
+          r.isFromAdmin && new Date(r.createdAt) > lastRead
+        );
+        unreadCount += newReplies.length;
+      }
+    });
+
+    res.json({ count: unreadCount });
+  } catch (error) {
+    console.error('getUnreadCount error:', error);
+    res.status(500).json({ message: 'Error fetching unread count' });
   }
 };
 
@@ -284,5 +383,6 @@ export {
   getCommunicationWithReplies,
   replyToCommunication,
   updateCommunicationStatus,
-  getInstructors
+  getInstructors,
+  getUnreadCount
 };

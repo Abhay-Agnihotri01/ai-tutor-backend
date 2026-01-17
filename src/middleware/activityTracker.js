@@ -1,4 +1,5 @@
 import ActivityLog from '../models/ActivityLog.js';
+import supabase from '../config/supabase.js';
 
 export const trackActivity = (action, resource) => {
   return async (req, res, next) => {
@@ -19,6 +20,17 @@ export const trackActivity = (action, resource) => {
 const logActivity = async (req, action, resource, responseData) => {
   try {
     if (!req.user) return;
+
+    // Update user's last_seen timestamp
+    try {
+      await supabase
+        .from('users')
+        .update({ last_seen: new Date().toISOString() })
+        .eq('id', req.user.id);
+    } catch (err) {
+      // Ignore errors if column doesn't exist yet/transient DB issues so we don't break activity logging
+      console.warn('Failed to update last_seen:', err.message);
+    }
 
     const details = {
       method: req.method,

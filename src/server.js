@@ -122,6 +122,7 @@ app.use(express.urlencoded({ extended: true }));
 
 // Activity routes (must be after body parser)
 app.use('/api/activity', cors({ origin: true, credentials: true }), activityRoutes);
+app.use('/api/admin-communications', cors({ origin: true, credentials: true }), adminCommunicationRoutes);
 
 // Session middleware for OAuth
 app.use(session({
@@ -1079,7 +1080,8 @@ const startServer = async () => {
       // Ignore table check errors
     }
 
-    // Socket.IO services removed - using LiveKit for real-time communication
+    // Initialize Socket.IO
+    socketService.initialize(server);
 
     server.listen(PORT, '0.0.0.0', () => {
       console.log(`Server running on port ${PORT}`);
