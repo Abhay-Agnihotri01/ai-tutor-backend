@@ -25,9 +25,9 @@ const sendCourseMessage = async (req, res) => {
     }
 
     const result = await notificationService.sendCustomMessage(
-      courseId, 
-      subject, 
-      message, 
+      courseId,
+      subject,
+      message,
       instructorId
     );
 
@@ -74,7 +74,7 @@ const getNotificationHistory = async (req, res) => {
             .select('title')
             .eq('id', notification.courseId)
             .single();
-          
+
           return {
             ...notification,
             courses: course ? { title: course.title } : null
@@ -209,7 +209,7 @@ const getNotificationAnalytics = async (req, res) => {
     notifications?.forEach(notification => {
       // Count by type
       analytics.byType[notification.type] = (analytics.byType[notification.type] || 0) + 1;
-      
+
       // Count by day
       const day = new Date(notification.sentAt).toDateString();
       analytics.byDay[day] = (analytics.byDay[day] || 0) + 1;
@@ -228,10 +228,79 @@ const getNotificationAnalytics = async (req, res) => {
   }
 };
 
+// Get current user's notifications
+const getMyNotifications = async (req, res) => {
+  try {
+    const userId = req.user.id;
+    const { limit = 20, offset = 0 } = req.query;
+
+    const result = await notificationService.getUserNotifications(
+      userId,
+      parseInt(limit),
+      parseInt(offset)
+    );
+
+    res.json({
+      success: true,
+      ...result
+    });
+  } catch (error) {
+    console.error('Error fetching notifications:', error);
+    res.status(500).json({
+      success: false,
+      message: 'Failed to fetch notifications'
+    });
+  }
+};
+
+// Mark notification as read
+const markRead = async (req, res) => {
+  try {
+    const userId = req.user.id;
+    const { id } = req.params;
+
+    await notificationService.markAsRead(id, userId);
+
+    res.json({
+      success: true,
+      message: 'Notification marked as read'
+    });
+  } catch (error) {
+    console.error('Error marking notification read:', error);
+    res.status(500).json({
+      success: false,
+      message: 'Failed to mark notification as read'
+    });
+  }
+};
+
+// Mark all notifications as read
+const markAllRead = async (req, res) => {
+  try {
+    const userId = req.user.id;
+
+    await notificationService.markAllAsRead(userId);
+
+    res.json({
+      success: true,
+      message: 'All notifications marked as read'
+    });
+  } catch (error) {
+    console.error('Error marking all read:', error);
+    res.status(500).json({
+      success: false,
+      message: 'Failed to mark all as read'
+    });
+  }
+};
+
 export {
   sendCourseMessage,
   getNotificationHistory,
   getCourseStudents,
   triggerCourseUpdate,
-  getNotificationAnalytics
+  getNotificationAnalytics,
+  getMyNotifications,
+  markRead,
+  markAllRead
 };

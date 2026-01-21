@@ -1,5 +1,6 @@
 import EmailProvider from './providers/EmailProvider.js';
 import supabase from '../config/supabase.js';
+import socketService from '../services/socketService.js';
 
 class NotificationService {
   constructor() {
@@ -121,7 +122,7 @@ class NotificationService {
   // Generate update email template
   generateUpdateEmail(data) {
     const { courseName, instructorName, updateType, updateData } = data;
-    
+
     let updateMessage = '';
     let subject = '';
 
@@ -251,19 +252,131 @@ class NotificationService {
 
   // Store notification in database for tracking
   async storeNotification(notificationData) {
-    const { error } = await supabase
+    const { data: notification, error } = await supabase
       .from('notifications')
       .insert({
         type: notificationData.type,
         courseId: notificationData.courseId,
         senderId: notificationData.senderId,
         subject: notificationData.subject,
-        content: notificationData.content,
+        content: notificationData.content, // HTML content
         metadata: notificationData.metadata,
         sentAt: new Date().toISOString()
-      });
+      })
+      .select()
+      .single();
 
-    if (error) console.error('Failed to store notification:', error);
+    if (error) {
+      console.error('Failed to store notification:', error);
+      return;
+    }
+
+    // Create recipient records
+    if (notificationData.recipients && notificationData.recipients.length > 0) {
+      const recipientRecords = notificationData.recipients.map(userId => ({
+        notification_id: notification.id,
+        user_id: userId,
+        isRead: false
+      }));
+
+      const { error: recipientError } = await supabase
+        .from('notification_recipients')
+        .insert(recipientRecords);
+
+      if (recipientError) {
+        console.error('Failed to store notification recipients:', recipientError);
+      } else {
+        // Send real-time notifications via Socket.IO
+        notificationData.recipients.forEach(userId => {
+          socketService.sendNotificationToUser(userId, {
+            ...notification,
+            isRead: false
+          });
+        });
+      }
+    }
+
+    return notification;
+  }
+
+  // Get notifications for a user
+  async getUserNotifications(userId, limit = 20, offset = 0) {
+    // Join notification_recipients with notifications
+    const { data, error, count } = await supabase
+      .from('notification_recipients')
+      .select(`
+        id,
+        isRead,
+        readAt,
+        createdAt,
+        notifications!notification_id (
+          id,
+          type,
+          courseId,
+          senderId,
+          subject,
+          content,
+          metadata,
+          sentAt,
+          sender:users (firstName, lastName, avatar) 
+        )
+      `, { count: 'exact' })
+      .eq('user_id', userId)
+      .order('createdAt', { ascending: false })
+      .range(offset, offset + limit - 1);
+
+    if (error) {
+      console.error('CRITICAL NOTIFICATION ERROR:', JSON.stringify(error, null, 2));
+      console.error('Query Params:', { userId, limit, offset });
+      throw error;
+    }
+
+    // Also get unread count
+    const { count: unreadCount, error: countError } = await supabase
+      .from('notification_recipients')
+      .select('*', { count: 'exact', head: true })
+      .eq('user_id', userId)
+      .eq('isRead', false);
+
+    if (countError) {
+      console.error('Error fetching unread count:', countError);
+    }
+
+    return {
+      notifications: data,
+      total: count,
+      unreadCount: unreadCount || 0
+    };
+  }
+
+  // Mark notification as read
+  async markAsRead(notificationId, userId) {
+    // Note: notificationId here refers to the ID of the notification_recipients record (the link)
+    // or the actual notification ID?
+    // Based on previous logic, we might have been passing the notification ID.
+    // But logically, for a specific user read status, we update a row in notification_recipients.
+    // If we pass the actual notification.id, we filter by notification_id AND user_id.
+
+    const { error } = await supabase
+      .from('notification_recipients')
+      .update({ isRead: true, readAt: new Date().toISOString() })
+      .eq('notification_id', notificationId) // Assuming input is notification ID
+      .eq('user_id', userId);
+
+    if (error) throw error;
+    return { success: true };
+  }
+
+  // Mark all as read
+  async markAllAsRead(userId) {
+    const { error } = await supabase
+      .from('notification_recipients')
+      .update({ isRead: true, readAt: new Date().toISOString() })
+      .eq('user_id', userId)
+      .eq('isRead', false);
+
+    if (error) throw error;
+    return { success: true };
   }
 }
 

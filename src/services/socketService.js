@@ -212,6 +212,20 @@ class SocketService {
     this.io.emit('online-users-update', onlineUsersList);
   }
 
+  // Send notification to a specific user
+  sendNotificationToUser(userId, notification) {
+    if (!this.io) return;
+
+    // Check if user is online
+    const userEntry = this.onlineUsers.get(userId);
+    if (userEntry && userEntry.socketIds) {
+      userEntry.socketIds.forEach(socketId => {
+        this.io.to(socketId).emit('new-notification', notification);
+      });
+      console.log(`Notification sent to user ${userId} via ${userEntry.socketIds.size} sockets`);
+    }
+  }
+
   getIO() {
     return this.io;
   }

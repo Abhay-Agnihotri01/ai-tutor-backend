@@ -1,14 +1,87 @@
 import supabase from '../config/supabase.js';
 
+// Helper function to calculate and save course progress
+// Counts both videos and text lectures for accurate percentage
+const calculateAndSaveProgress = async (userId, courseId) => {
+  try {
+    // Get all chapters for this course
+    const { data: chapters } = await supabase
+      .from('chapters')
+      .select('id')
+      .eq('courseId', courseId);
+
+    const chapterIds = chapters?.map(c => c.id) || [];
+    if (chapterIds.length === 0) return 0;
+
+    // Count total videos
+    const { count: totalVideos } = await supabase
+      .from('videos')
+      .select('*', { count: 'exact', head: true })
+      .in('chapterId', chapterIds);
+
+    // Count total text lectures
+    let totalTextLectures = 0;
+    try {
+      const { count } = await supabase
+        .from('text_lectures')
+        .select('*', { count: 'exact', head: true })
+        .in('chapterId', chapterIds);
+      totalTextLectures = count || 0;
+    } catch (e) {
+      // Table might not exist
+    }
+
+    const totalContent = (totalVideos || 0) + totalTextLectures;
+    if (totalContent === 0) return 0;
+
+    // Count completed videos
+    const { count: completedVideos } = await supabase
+      .from('video_progress')
+      .select('*', { count: 'exact', head: true })
+      .eq('userId', userId)
+      .eq('courseId', courseId)
+      .eq('completed', true);
+
+    // Count completed text lectures
+    let completedTextLectures = 0;
+    try {
+      const { count } = await supabase
+        .from('text_lecture_progress')
+        .select('*', { count: 'exact', head: true })
+        .eq('userId', userId)
+        .eq('courseId', courseId)
+        .eq('completed', true);
+      completedTextLectures = count || 0;
+    } catch (e) {
+      // Table might not exist
+    }
+
+    const completedContent = (completedVideos || 0) + completedTextLectures;
+    const progress = Math.round((completedContent / totalContent) * 100);
+
+    // Update enrollment with calculated progress
+    await supabase
+      .from('enrollments')
+      .update({ progress, updatedAt: new Date().toISOString() })
+      .eq('userId', userId)
+      .eq('courseId', courseId);
+
+    return progress;
+  } catch (error) {
+    console.error('Error calculating progress:', error);
+    return 0;
+  }
+};
+
 export const enrollInCourse = async (req, res) => {
   try {
     const { courseId } = req.body;
-    
+
     // Check if user is authenticated
     if (!req.user || !req.user.id) {
       return res.status(401).json({ message: 'User not authenticated' });
     }
-    
+
     const userId = req.user.id;
 
     // Validate courseId
@@ -35,14 +108,14 @@ export const enrollInCourse = async (req, res) => {
       .eq('id', courseId)
       .eq('isPublished', true)
       .single();
-      
+
     if (!course) {
       return res.status(404).json({ message: 'Course not found or not published' });
     }
 
     // Calculate actual price paid (use discount price if available)
     const actualPrice = course.discountPrice || course.price || 0;
-    
+
     // Create enrollment with actual price paid
     const { data: enrollment, error } = await supabase
       .from('enrollments')
@@ -92,12 +165,84 @@ export const getUserEnrollments = async (req, res) => {
     if (error) throw error;
 
     // Format the response to match expected structure
-    const enrollmentsWithCourses = enrollments.map(enrollment => ({
-      ...enrollment,
-      Course: enrollment.courses ? {
-        ...enrollment.courses,
-        instructor: enrollment.courses.users
-      } : null
+    const enrollmentsWithCourses = await Promise.all(enrollments.map(async (enrollment) => {
+      let actualDuration = 0;
+      let actualLessons = 0;
+      let totalTextLectures = 0;
+
+      if (enrollment.courses) {
+        // Fetch chapters and videos for duration calculation
+        const { data: chapters } = await supabase
+          .from('chapters')
+          .select(`
+            id,
+            videos (duration)
+          `)
+          .eq('courseId', enrollment.courses.id);
+
+        if (chapters) {
+          chapters.forEach(chapter => {
+            // Count videos
+            if (chapter.videos) {
+              actualLessons += chapter.videos.length;
+              chapter.videos.forEach(video => {
+                actualDuration += (video.duration || 0);
+              });
+            }
+          });
+        }
+
+        // Count text lectures and add estimated reading time (10 min per text lecture)
+        try {
+          const { data: textLectures, count } = await supabase
+            .from('text_lectures')
+            .select('*', { count: 'exact' })
+            .eq('courseId', enrollment.courses.id);
+          totalTextLectures = count || 0;
+          // Add 10 minutes (600 seconds) per text lecture as estimated reading time
+          actualDuration += totalTextLectures * 600;
+        } catch (e) {
+          // Table might not exist
+        }
+      }
+
+      // Check if course has actually started (any progress record exists)
+      const { count: videoProgressCount } = await supabase
+        .from('video_progress')
+        .select('*', { count: 'exact', head: true })
+        .eq('userId', userId)
+        .eq('courseId', enrollment.courses.id);
+
+      let textProgressCount = 0;
+      try {
+        const { count } = await supabase
+          .from('text_lecture_progress')
+          .select('*', { count: 'exact', head: true })
+          .eq('userId', userId)
+          .eq('courseId', enrollment.courses.id);
+        textProgressCount = count || 0;
+      } catch (e) {
+        // Ignore if table issues
+      }
+
+      const hasStarted = (videoProgressCount > 0 || textProgressCount > 0);
+
+      // Recalculate progress dynamically to ensure accuracy
+      const dynamicProgress = await calculateAndSaveProgress(userId, enrollment.courses.id);
+
+      const durationHours = Math.round((actualDuration / 3600) * 10) / 10;
+
+      return {
+        ...enrollment,
+        progress: dynamicProgress, // Use dynamically calculated progress
+        hasStarted, // Dynamic flag
+        Course: enrollment.courses ? {
+          ...enrollment.courses,
+          instructor: enrollment.courses.users,
+          actualDuration: durationHours,
+          actualLessons: actualLessons + totalTextLectures // Include text lectures in lesson count
+        } : null
+      };
     }));
 
     res.json({
@@ -202,7 +347,7 @@ export const updateVideoProgress = async (req, res) => {
         completed: isCompleted,
         "completedAt": isCompleted && !existing?.completed ? new Date().toISOString() : undefined
       }, { onConflict: '"userId","videoId"' });
-      
+
 
 
     // Update course progress if video completed
@@ -211,9 +356,9 @@ export const updateVideoProgress = async (req, res) => {
         .from('chapters')
         .select('id')
         .eq('courseId', courseId);
-      
+
       const chapterIds = chapters?.map(ch => ch.id) || [];
-      
+
       const { data: courseVideos } = await supabase
         .from('videos')
         .select('id')
@@ -248,6 +393,11 @@ export const getVideoProgress = async (req, res) => {
     const { courseId } = req.params;
     const userId = req.user.id;
 
+    // Self-healing: Recalculate and save progress to ensure DB is in sync
+    // This fixes issues where frontend calculation (dynamic) differs from DB value (static)
+    // due to missed updates or legacy data.
+    await calculateAndSaveProgress(userId, courseId);
+
     // Get video progress
     const { data: videoProgress } = await supabase
       .from('video_progress')
@@ -270,6 +420,7 @@ export const getVideoProgress = async (req, res) => {
 
     res.json({ success: true, progress: allProgress });
   } catch (error) {
+    console.error('Get video progress error:', error);
     res.json({ success: true, progress: [] });
   }
 };
@@ -291,19 +442,26 @@ export const markContentComplete = async (req, res) => {
           completed: true,
           completedAt: new Date().toISOString()
         }, { onConflict: '"userId","textLectureId"' });
-      
+
       if (error) {
         console.error('Text lecture progress error:', error);
         return res.status(500).json({ message: 'Failed to save progress', error: error.message });
       }
+
+      // Recalculate and save overall course progress
+      const progress = await calculateAndSaveProgress(userId, courseId);
+      return res.json({ success: true, progress });
     }
 
-    res.json({ success: true });
+    // For other content types, still recalculate progress
+    const progress = await calculateAndSaveProgress(userId, courseId);
+    res.json({ success: true, progress });
   } catch (error) {
     console.error('Mark content complete error:', error);
     res.status(500).json({ message: 'Server error', error: error.message });
   }
 };
+
 
 export const updateProgress = async (req, res) => {
   try {
