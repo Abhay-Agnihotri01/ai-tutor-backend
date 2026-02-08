@@ -37,10 +37,10 @@ export const generateAdminToken = async (req, res) => {
 
     // Generate admin meeting configuration
     const adminName = `Admin (${adminUser.firstName} ${adminUser.lastName})`;
-    
+
     const meetingConfig = {
       roomName: meetingId,
-      domain: process.env.JITSI_DOMAIN || '8x8.vc',
+      domain: 'meet.jit.si', // Placeholder - feature disabled
       userInfo: {
         displayName: adminName,
         email: 'admin@system.local'
@@ -56,7 +56,7 @@ export const generateAdminToken = async (req, res) => {
         enableAuthenticationUI: false
       },
       interfaceConfigOverwrite: {
-        SHOW_JITSI_WATERMARK: false,
+        SHOW_WATERMARK: false,
         SHOW_WATERMARK_FOR_GUESTS: false,
         TOOLBAR_BUTTONS: [
           'microphone', 'camera', 'closedcaptions', 'desktop', 'fullscreen',

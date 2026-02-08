@@ -1,4 +1,7 @@
 import supabase from '../config/supabase.js';
+import NotificationService from '../notifications/NotificationService.js';
+
+const notificationService = new NotificationService();
 
 // Helper function to calculate and save course progress
 // Counts both videos and text lectures for accurate percentage
@@ -59,12 +62,31 @@ const calculateAndSaveProgress = async (userId, courseId) => {
     const completedContent = (completedVideos || 0) + completedTextLectures;
     const progress = Math.round((completedContent / totalContent) * 100);
 
+    // Get previous progress to check for milestones
+    const { data: currentEnrollment } = await supabase
+      .from('enrollments')
+      .select('progress')
+      .eq('userId', userId)
+      .eq('courseId', courseId)
+      .single();
+
+    const previousProgress = currentEnrollment?.progress || 0;
+
     // Update enrollment with calculated progress
     await supabase
       .from('enrollments')
       .update({ progress, updatedAt: new Date().toISOString() })
       .eq('userId', userId)
       .eq('courseId', courseId);
+
+    // Check for milestones (25, 50, 75, 100)
+    const milestones = [25, 50, 75, 100];
+    for (const milestone of milestones) {
+      if (previousProgress < milestone && progress >= milestone) {
+        // User just crossed a milestone
+        notificationService.sendProgressMilestoneNotification(userId, courseId, milestone).catch(console.error);
+      }
+    }
 
     return progress;
   } catch (error) {

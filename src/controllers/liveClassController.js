@@ -1,5 +1,4 @@
 import supabase from '../config/supabase.js';
-import JitsiService from '../services/JitsiService.js';
 import CloudinaryService from '../services/CloudinaryService.js';
 import fs from 'fs';
 import path from 'path';
@@ -30,8 +29,8 @@ export const createLiveClass = async (req, res) => {
       });
     }
 
-    // Generate unique room name for Jitsi
-    const roomName = JitsiService.generateRoomName('class');
+    // Generate unique room name
+    const roomName = `class-${Date.now()}-${Math.random().toString(36).substr(2, 9)}`;
 
     // Create live class in database
     const { data: liveClass, error } = await supabase
@@ -323,15 +322,17 @@ export const generateLiveKitToken = async (req, res) => {
 
     console.log('LiveKit token - Role determined:', role);
 
-    // Generate Jitsi meeting configuration
+    // Generate meeting configuration (feature disabled)
     const participantName = `${user.firstName} ${user.lastName}`;
 
-    console.log('Jitsi config - Generating config for:', { meetingId, participantName, userId, role });
+    console.log('Meeting config - Generating config for:', { meetingId, participantName, userId, role });
 
-    const meetingConfig = JitsiService.generateMeetingConfig(meetingId, participantName, userId, role);
+    const meetingConfig = {
+      roomName: meetingId,
+      userInfo: { displayName: participantName }
+    };
 
-    console.log('Jitsi config - Generated meeting configuration:', {
-      domain: meetingConfig.domain,
+    console.log('Meeting config - Generated meeting configuration:', {
       roomName: meetingConfig.roomName,
       displayName: meetingConfig.userInfo?.displayName
     });
@@ -354,7 +355,7 @@ export const generateLiveKitToken = async (req, res) => {
       console.error('Failed to record participation:', participationError);
     }
 
-    console.log('Jitsi config - Sending response with config');
+    console.log('Meeting config - Sending response with config');
     res.json({
       success: true,
       meetingConfig: meetingConfig,
@@ -874,18 +875,8 @@ export const startRecording = async (req, res) => {
     const recordingId = `recording-${liveClass.id}-${Date.now()}`;
     console.log(`Starting LiveKit recording with ID: ${recordingId}`);
 
-    let recordingResponse;
-    try {
-      recordingResponse = await JitsiService.startRecording(liveClass.meetingId || `room-${liveClass.id}`, recordingId);
-      console.log('Jitsi recording response:', recordingResponse);
-    } catch (jitsiError) {
-      console.error('Jitsi error:', jitsiError.message);
-      return res.status(500).json({
-        success: false,
-        message: `Jitsi error: ${jitsiError.message}`,
-        error: jitsiError.message
-      });
-    }
+    // Recording feature disabled
+    const recordingResponse = { recordingId };
 
     const { data: recording, error: insertError } = await supabase
       .from('live_class_recordings')
@@ -941,12 +932,13 @@ export const stopRecording = async (req, res) => {
       return res.status(404).json({ success: false, message: 'Recording not found' });
     }
 
-    await JitsiService.stopRecording(liveClass.recordingId);
+    // Stop recording (feature disabled)
 
     // Get recording info to store download URL
     let downloadUrl = null;
     try {
-      const recordingInfo = await JitsiService.getRecordingInfo(liveClass.recordingId);
+      // Recording info (feature disabled)
+      const recordingInfo = null;
       if (recordingInfo && recordingInfo.file) {
         downloadUrl = recordingInfo.file.download_url || recordingInfo.file.filename;
       }
@@ -999,7 +991,8 @@ export const publishRecording = async (req, res) => {
     }
 
     try {
-      const recordingInfo = await JitsiService.getRecordingInfo(recording.recordingId);
+      // Recording info (feature disabled)
+      const recordingInfo = { file: { filename: null } };
       const publicId = `live-class-${recording.liveClassId}-${Date.now()}`;
 
       const cloudinaryResult = await CloudinaryService.uploadVideo(
@@ -1254,8 +1247,8 @@ export const downloadRecording = async (req, res) => {
       });
     }
 
-    // Priority 3: Try to get from LiveKit (fallback)
-    const recordingInfo = await JitsiService.getRecordingInfo(recording.recordingId);
+    // Priority 3: Feature disabled - no fallback available
+    const recordingInfo = null;
 
     if (recordingInfo && recordingInfo.file) {
       return res.json({

@@ -44,6 +44,10 @@ const Video = sequelize.define('Video', {
     type: DataTypes.STRING,
     allowNull: false,
     defaultValue: 'video'
+  },
+  isFreePreview: {
+    type: DataTypes.BOOLEAN,
+    defaultValue: false
   }
 });
 

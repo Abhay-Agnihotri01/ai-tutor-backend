@@ -11,7 +11,8 @@ export const getCourses = async (req, res) => {
       .from('courses')
       .select(`
         *,
-        users!inner(firstName, lastName, avatar)
+        users!inner(firstName, lastName, avatar),
+        ratings(rating)
       `, { count: 'exact' })
       .eq('isPublished', true);
 
@@ -27,26 +28,22 @@ export const getCourses = async (req, res) => {
 
     if (error) throw error;
 
-    // Calculate current ratings for each course
-    const coursesWithRatings = await Promise.all(
-      (courses || []).map(async (course) => {
-        const { data: ratingData } = await supabase
-          .from('ratings')
-          .select('rating')
-          .eq('courseId', course.id);
+    // Calculate ratings from the joined data
+    const coursesWithRatings = courses.map(course => {
+      const ratings = course.ratings || [];
+      let currentRating = 0;
+      if (ratings.length > 0) {
+        currentRating = ratings.reduce((sum, r) => sum + r.rating, 0) / ratings.length;
+        currentRating = Math.round(currentRating * 10) / 10;
+      }
 
-        let currentRating = 0;
-        if (ratingData && ratingData.length > 0) {
-          currentRating = ratingData.reduce((sum, r) => sum + r.rating, 0) / ratingData.length;
-          currentRating = Math.round(currentRating * 10) / 10;
-        }
-
-        return {
-          ...course,
-          rating: currentRating
-        };
-      })
-    );
+      // Remove the raw ratings array to keep response clean
+      const { ratings: _, ...courseData } = course;
+      return {
+        ...courseData,
+        rating: currentRating
+      };
+    });
 
     res.json({
       success: true,
@@ -142,17 +139,17 @@ export const getCourse = async (req, res) => {
 export const createCourse = async (req, res) => {
   try {
 
-    
+
     const { title, shortDescription, description, category, level, price, language, discountPrice } = req.body;
     const instructorId = req.user.id;
-    
+
     // Validate required fields
     if (!title || !description || !category) {
-      return res.status(400).json({ 
-        message: 'Missing required fields: title, description, category' 
+      return res.status(400).json({
+        message: 'Missing required fields: title, description, category'
       });
     }
-    
+
     // Handle thumbnail upload (Cloudinary URL)
     const thumbnail = req.file ? req.file.path : null;
 
@@ -169,7 +166,7 @@ export const createCourse = async (req, res) => {
       instructorId,
       isPublished: false
     };
-    
+
 
 
     const { data: course, error } = await supabase
@@ -177,7 +174,7 @@ export const createCourse = async (req, res) => {
       .insert(courseData)
       .select()
       .single();
-    
+
     if (error) throw error;
 
     res.status(201).json({
@@ -195,55 +192,51 @@ export const getInstructorCourses = async (req, res) => {
   try {
     const instructorId = req.user.id;
 
+    // Fetch everything in one query using Supabase foreign tables
+    // We get enrollments for count and revenue, and ratings
     const { data: courses, error } = await supabase
       .from('courses')
       .select(`
         *,
-        users!inner(firstName, lastName, avatar)
+        users!inner(firstName, lastName, avatar),
+        enrollments(pricePaid),
+        ratings(rating)
       `)
       .eq('instructorId', instructorId)
       .order('createdAt', { ascending: false });
 
     if (error) throw error;
 
-    // Get enrollment stats and ratings for each course
-    const coursesWithStats = await Promise.all(
-      courses.map(async (course) => {
-        const { count: enrollmentCount } = await supabase
-          .from('enrollments')
-          .select('*', { count: 'exact', head: true })
-          .eq('courseId', course.id);
+    // Process the data in memory
+    const coursesWithStats = courses.map((course) => {
+      const enrollments = course.enrollments || [];
+      const ratings = course.ratings || [];
 
-        // Get ratings for this course
-        const { data: ratingData } = await supabase
-          .from('ratings')
-          .select('rating')
-          .eq('courseId', course.id);
+      // Calculate enrollment count
+      const enrollmentCount = enrollments.length;
 
-        let currentRating = 0;
-        if (ratingData && ratingData.length > 0) {
-          currentRating = ratingData.reduce((sum, r) => sum + r.rating, 0) / ratingData.length;
-          currentRating = Math.round(currentRating * 10) / 10;
-        }
+      // Calculate rating
+      let currentRating = 0;
+      if (ratings.length > 0) {
+        currentRating = ratings.reduce((sum, r) => sum + r.rating, 0) / ratings.length;
+        currentRating = Math.round(currentRating * 10) / 10;
+      }
 
-        // Calculate revenue from actual prices paid
-        const { data: courseEnrollments } = await supabase
-          .from('enrollments')
-          .select('pricePaid')
-          .eq('courseId', course.id);
-        
-        const revenue = courseEnrollments?.reduce((sum, enrollment) => 
-          sum + (enrollment.pricePaid || 0), 0
-        ) || 0;
+      // Calculate revenue
+      const revenue = enrollments.reduce((sum, enrollment) =>
+        sum + (enrollment.pricePaid || 0), 0
+      );
 
-        return {
-          ...course,
-          rating: currentRating,
-          students: enrollmentCount || 0,
-          revenue: revenue
-        };
-      })
-    );
+      // Clean up response
+      const { enrollments: _, ratings: __, ...courseData } = course;
+
+      return {
+        ...courseData,
+        rating: currentRating,
+        students: enrollmentCount,
+        revenue: revenue
+      };
+    });
 
     res.json({
       success: true,
@@ -259,51 +252,43 @@ export const getInstructorStats = async (req, res) => {
   try {
     const instructorId = req.user.id;
 
+    // Fetch all courses with their enrollments and ratings in one go
     const { data: courses, error: coursesError } = await supabase
       .from('courses')
-      .select('id')
+      .select(`
+        id,
+        enrollments(pricePaid),
+        ratings(rating)
+      `)
       .eq('instructorId', instructorId);
 
     if (coursesError) throw coursesError;
 
-    const courseIds = courses?.map(course => course.id) || [];
-    
-    const { count: totalStudents } = await supabase
-      .from('enrollments')
-      .select('*', { count: 'exact', head: true })
-      .in('courseId', courseIds);
-
-    // Calculate total revenue across all courses
+    let totalStudents = 0;
     let totalRevenue = 0;
     let totalRatingSum = 0;
     let totalRatedCourses = 0;
 
-    for (const course of courses || []) {
-      // Get enrollments with actual prices paid
-      const { data: courseEnrollments } = await supabase
-        .from('enrollments')
-        .select('pricePaid')
-        .eq('courseId', course.id);
+    courses?.forEach(course => {
+      const enrollments = course.enrollments || [];
+      const ratings = course.ratings || [];
 
-      // Calculate revenue from actual prices paid
-      const courseRevenue = courseEnrollments?.reduce((sum, enrollment) => 
+      // Add to total students
+      totalStudents += enrollments.length;
+
+      // Add to total revenue
+      const courseRevenue = enrollments.reduce((sum, enrollment) =>
         sum + (enrollment.pricePaid || 0), 0
-      ) || 0;
-      
+      );
       totalRevenue += courseRevenue;
 
-      // Get ratings for average calculation
-      const { data: ratingData } = await supabase
-        .from('ratings')
-        .select('rating')
-        .eq('courseId', course.id);
-
-      if (ratingData && ratingData.length > 0) {
-        const courseRating = ratingData.reduce((sum, r) => sum + r.rating, 0) / ratingData.length;
+      // Calculate course rating
+      if (ratings.length > 0) {
+        const courseRating = ratings.reduce((sum, r) => sum + r.rating, 0) / ratings.length;
         totalRatingSum += courseRating;
         totalRatedCourses++;
       }
-    }
+    });
 
     const avgRating = totalRatedCourses > 0 ? Math.round((totalRatingSum / totalRatedCourses) * 10) / 10 : 0;
 
@@ -311,9 +296,9 @@ export const getInstructorStats = async (req, res) => {
       success: true,
       stats: {
         totalCourses: courses?.length || 0,
-        totalStudents: totalStudents || 0,
-        totalRevenue: totalRevenue,
-        avgRating: avgRating
+        totalStudents,
+        totalRevenue,
+        avgRating
       }
     });
   } catch (error) {
@@ -405,7 +390,7 @@ export const publishCourse = async (req, res) => {
 
     const { data: updatedCourse, error: updateError } = await supabase
       .from('courses')
-      .update({ 
+      .update({
         isPublished: !course.isPublished,
         updatedAt: getCurrentTimestamp()
       })

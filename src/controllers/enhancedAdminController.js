@@ -1,7 +1,6 @@
 import supabase from '../config/supabase.js';
 import ActivityLog from '../models/ActivityLog.js';
 import AdminSession from '../models/AdminSession.js';
-import { generateAdminJitsiToken } from '../utils/adminJitsiJWT.js';
 
 // Enhanced Dashboard with Real-time Analytics
 export const getEnhancedDashboard = async (req, res) => {
@@ -155,9 +154,9 @@ export const joinLiveClassAsAdmin = async (req, res) => {
       .eq('id', liveClass.instructorId)
       .single();
 
-    // Generate admin access for Jitsi with full moderator privileges
+    // Generate admin access (feature disabled - no token needed)
     const adminName = `Admin (${req.user.firstName} ${req.user.lastName})`;
-    const adminToken = generateAdminJitsiToken(meetingId, adminName, adminId);
+    const adminToken = null;
 
     // Log admin session
     try {
@@ -193,7 +192,7 @@ export const joinLiveClassAsAdmin = async (req, res) => {
       meetingConfig: {
         roomName: meetingId,
         displayName: adminName,
-        domain: process.env.JITSI_DOMAIN || '8x8.vc',
+        domain: 'meet.jit.si', // Placeholder - feature disabled
         jwt: adminToken
       },
       liveClass: {

@@ -3,6 +3,9 @@ import crypto from 'crypto';
 // Removed Sequelize import
 import supabase from '../config/supabase.js';
 import { trackInstructorEarning } from './payoutController.js';
+import NotificationService from '../notifications/NotificationService.js';
+
+const notificationService = new NotificationService();
 
 // Initialize Razorpay instance
 const getRazorpayInstance = () => {
@@ -108,7 +111,7 @@ export const createOrder = async (req, res) => {
     if (courses && Array.isArray(courses)) {
       // Validate all courses exist and user not enrolled
       const courseIds = courses.map(c => c.courseId);
-      
+
       const { data: coursesData, error: coursesError } = await supabase
         .from('courses')
         .select('*')
@@ -128,8 +131,8 @@ export const createOrder = async (req, res) => {
       if (existingEnrollments && existingEnrollments.length > 0) {
         const enrolledCourseIds = existingEnrollments.map(e => e.courseId);
         const enrolledCourses = coursesData.filter(c => enrolledCourseIds.includes(c.id));
-        return res.status(400).json({ 
-          message: `Already enrolled in: ${enrolledCourses.map(c => c.title).join(', ')}` 
+        return res.status(400).json({
+          message: `Already enrolled in: ${enrolledCourses.map(c => c.title).join(', ')}`
         });
       }
 
@@ -195,7 +198,7 @@ export const verifyPayment = async (req, res) => {
     // Get payment details from Razorpay
     const razorpay = getRazorpayInstance();
     const payment = await razorpay.payments.fetch(razorpay_payment_id);
-    
+
     if (payment.status !== 'captured') {
       return res.status(400).json({ message: 'Payment not captured' });
     }
@@ -220,7 +223,7 @@ export const verifyPayment = async (req, res) => {
         .select('price, discountPrice')
         .eq('id', courseId)
         .single();
-      
+
       const pricePaid = courseData?.discountPrice || courseData?.price || 0;
 
       // Create enrollment with price paid
@@ -239,6 +242,9 @@ export const verifyPayment = async (req, res) => {
 
       // Track instructor earning
       await trackInstructorEarning(courseId, parseFloat(pricePaid), userId);
+
+      // Send enrollment and payment notifications
+      notificationService.sendEnrollmentNotification(userId, courseId).catch(console.error);
 
       return res.json({
         success: true,
@@ -273,7 +279,7 @@ export const verifyPayment = async (req, res) => {
       const enrollmentData = coursesToEnroll.map(courseId => {
         const coursePrice = coursePrices?.find(c => c.id === courseId);
         const pricePaid = coursePrice?.discountPrice || coursePrice?.price || 0;
-        
+
         return {
           userId,
           courseId,
@@ -302,6 +308,31 @@ export const verifyPayment = async (req, res) => {
         .delete()
         .eq('userId', userId)
         .in('courseId', courses);
+
+      // Send enrollment notifications for each course
+      for (const courseId of coursesToEnroll) {
+        notificationService.sendEnrollmentNotification(userId, courseId).catch(console.error);
+      }
+
+      // Get course info for payment notification
+      const { data: courseInfo } = await supabase
+        .from('courses')
+        .select('id, title, price, discountPrice')
+        .in('id', coursesToEnroll);
+
+      const totalPaid = enrollmentData.reduce((sum, e) => sum + e.pricePaid, 0);
+      const coursesForNotification = courseInfo?.map(c => ({
+        title: c.title,
+        price: c.discountPrice || c.price
+      })) || [];
+
+      // Send payment receipt notification
+      notificationService.sendPaymentNotification(
+        userId,
+        coursesForNotification,
+        totalPaid,
+        razorpay_payment_id
+      ).catch(console.error);
 
       return res.json({
         success: true,

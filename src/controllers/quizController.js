@@ -1,4 +1,7 @@
 import supabase from '../config/supabase.js';
+import NotificationService from '../notifications/NotificationService.js';
+
+const notificationService = new NotificationService();
 
 // Create Quiz
 export const createQuiz = async (req, res) => {
@@ -56,16 +59,16 @@ export const addQuizQuestion = async (req, res) => {
   try {
     const { quizId } = req.params;
     const { question, type, marks, options, correctAnswer } = req.body;
-    
 
-    
+
+
     // Check if quiz exists first
     const { data: existingQuiz, error: quizCheckError } = await supabase
       .from('quizzes')
       .select('id, title, "totalMarks"')
       .eq('id', quizId)
       .single();
-    
+
     if (quizCheckError || !existingQuiz) {
       return res.status(404).json({ message: 'Quiz not found' });
     }
@@ -76,7 +79,7 @@ export const addQuizQuestion = async (req, res) => {
       "questionType": type || 'single_correct',
       points: marks || 1
     };
-    
+
     const { data: questionData, error: questionError } = await supabase
       .from('quiz_questions')
       .insert(questionInsertData)
@@ -91,13 +94,13 @@ export const addQuizQuestion = async (req, res) => {
     if (options && options.length > 0) {
       const optionsData = options.map((option, index) => {
         let isCorrect = false;
-        
+
         if (type === 'single_correct') {
           isCorrect = correctAnswer === option;
         } else if (type === 'multiple_correct') {
           isCorrect = Array.isArray(correctAnswer) && correctAnswer.includes(option);
         }
-        
+
         return {
           "questionId": questionData.id,
           "optionText": option,
@@ -118,14 +121,14 @@ export const addQuizQuestion = async (req, res) => {
 
     // Update quiz totalMarks
     const newTotalMarks = (existingQuiz?.totalMarks || 0) + (marks || 1);
-    
+
     const { data: updatedQuiz, error: updateError } = await supabase
       .from('quizzes')
       .update({ "totalMarks": newTotalMarks })
       .eq('id', quizId)
       .select()
       .single();
-    
+
     if (updateError) {
       // Quiz update failed but question was added
     }
@@ -146,11 +149,11 @@ export const getQuiz = async (req, res) => {
       .select('*')
       .eq('id', id)
       .single();
-    
+
     if (basicError || !basicQuiz) {
       return res.status(404).json({ message: 'Quiz not found' });
     }
-    
+
     // Get full quiz with questions
     const { data: quiz, error: quizError } = await supabase
       .from('quizzes')
@@ -181,15 +184,15 @@ export const getQuiz = async (req, res) => {
     // Transform questions to match frontend expectations
     const transformedQuestions = (quiz.quiz_questions || []).map((q, index) => {
 
-      
+
       return {
         id: q.id,
         question: q.questionText,
         type: q.questionType,
         marks: q.points,
         options: q.quiz_options ? q.quiz_options.map(opt => opt.optionText) : [],
-        correctAnswer: q.quiz_options ? 
-          (q.questionType === 'multiple_correct' ? 
+        correctAnswer: q.quiz_options ?
+          (q.questionType === 'multiple_correct' ?
             q.quiz_options.filter(opt => opt.isCorrect).map(opt => opt.optionText) :
             q.quiz_options.find(opt => opt.isCorrect)?.optionText
           ) : null
@@ -201,10 +204,10 @@ export const getQuiz = async (req, res) => {
       ...quiz,
       questions: transformedQuestions
     };
-    
+
     // Remove the raw quiz_questions to avoid confusion
     delete finalQuiz.quiz_questions;
-    
+
 
 
     res.json({ success: true, quiz: finalQuiz });
@@ -252,19 +255,19 @@ export const submitQuizAttempt = async (req, res) => {
     // Calculate score
     let score = 0;
     let totalPoints = 0;
-    
+
 
 
     quiz.quiz_questions.forEach((question, index) => {
       totalPoints += question.points;
       const userAnswer = answers[question.id];
-      
 
-      
+
+
       if (question.questionType === 'single_correct') {
         const correctOptions = question.quiz_options.filter(opt => opt.isCorrect);
         const correctOption = correctOptions[0];
-        
+
         // Compare by option text, not ID
         if (correctOption && userAnswer === correctOption.optionText) {
           score += question.points;
@@ -273,9 +276,9 @@ export const submitQuizAttempt = async (req, res) => {
         const userAnswers = Array.isArray(userAnswer) ? userAnswer : [];
         const correctOptions = question.quiz_options.filter(opt => opt.isCorrect);
         const correctTexts = correctOptions.map(opt => opt.optionText);
-        
-        if (correctTexts.length === userAnswers.length && 
-            correctTexts.every(text => userAnswers.includes(text))) {
+
+        if (correctTexts.length === userAnswers.length &&
+          correctTexts.every(text => userAnswers.includes(text))) {
           score += question.points;
         }
       } else if (question.questionType === 'true_false') {
@@ -288,7 +291,7 @@ export const submitQuizAttempt = async (req, res) => {
         }
       }
     });
-    
+
 
 
     const percentage = totalPoints > 0 ? Math.round((score / totalPoints) * 100) : 0;
@@ -320,6 +323,14 @@ export const submitQuizAttempt = async (req, res) => {
         passed: isPassed
       }
     });
+
+    // Send notification
+    notificationService.sendQuizResultNotification(
+      userId,
+      quizId,
+      percentage,
+      isPassed
+    ).catch(console.error);
   } catch (error) {
     console.error('Submit quiz attempt error:', error);
     res.status(500).json({ message: 'Server error', error: error.message });
@@ -344,11 +355,11 @@ export const getQuizzesByChapter = async (req, res) => {
     const quizzesWithStatus = [];
     for (const quiz of quizzes || []) {
 
-      
+
       let isReady = quiz.isActive;
       let questionCount = 0;
       let questions = [];
-      
+
       if (quiz.type === 'quiz') {
         // For quizzes, get questions with options
         const { data: questionsData, error: questionsError } = await supabase
@@ -366,7 +377,7 @@ export const getQuizzesByChapter = async (req, res) => {
             )
           `)
           .eq('"quizId"', quiz.id);
-        
+
         if (!questionsError && questionsData) {
           questionCount = questionsData.length;
           // Transform questions to match frontend expectations
@@ -376,26 +387,26 @@ export const getQuizzesByChapter = async (req, res) => {
             type: q.questionType,
             marks: q.points,
             options: q.quiz_options ? q.quiz_options.map(opt => opt.optionText) : [],
-            correctAnswer: q.quiz_options ? 
-              (q.questionType === 'multiple_correct' ? 
+            correctAnswer: q.quiz_options ?
+              (q.questionType === 'multiple_correct' ?
                 q.quiz_options.filter(opt => opt.isCorrect).map(opt => opt.optionText) :
                 q.quiz_options.find(opt => opt.isCorrect)?.optionText
               ) : null
           }));
         }
-        
 
-        
+
+
         isReady = isReady && questionCount > 0;
       }
-      
 
-      
+
+
       // Calculate total marks from questions if it's a quiz type
       let actualTotalMarks = quiz.totalMarks;
       if (quiz.type === 'quiz' && questionCount > 0) {
         actualTotalMarks = questions.reduce((sum, q) => sum + (q.marks || 0), 0);
-        
+
         // Update quiz totalMarks if different
         if (actualTotalMarks !== quiz.totalMarks) {
           await supabase
@@ -404,7 +415,7 @@ export const getQuizzesByChapter = async (req, res) => {
             .eq('id', quiz.id);
         }
       }
-      
+
       quizzesWithStatus.push({
         ...quiz,
         isReady,
@@ -413,7 +424,7 @@ export const getQuizzesByChapter = async (req, res) => {
         totalMarks: actualTotalMarks // Use calculated total marks
       });
     }
-    
+
 
 
     res.json({ success: true, quizzes: quizzesWithStatus });
@@ -450,7 +461,7 @@ export const getQuizAttemptStatus = async (req, res) => {
     if (error) throw error;
 
     const latestAttempt = attempts?.[0] || null;
-    
+
     // Check if quiz was updated after last attempt (allow retake ONLY for quiz type, NOT assignments)
     let canRetake = false;
     if (latestAttempt && quiz.updatedAt && quiz.type === 'quiz') {
@@ -458,9 +469,9 @@ export const getQuizAttemptStatus = async (req, res) => {
       const attemptDate = new Date(latestAttempt.createdAt);
       canRetake = quizUpdated > attemptDate;
     }
-    
-    res.json({ 
-      success: true, 
+
+    res.json({
+      success: true,
       attempt: latestAttempt,
       hasAttempted: !!latestAttempt,
       canRetake,
@@ -477,7 +488,7 @@ export const startQuizAttempt = async (req, res) => {
   try {
     const { quizId } = req.body;
     const userId = req.user.id;
-    
+
 
 
     // Get quiz with questions using the same logic as getQuiz
@@ -507,7 +518,7 @@ export const startQuizAttempt = async (req, res) => {
     if (!quiz) {
       return res.status(404).json({ message: 'Quiz not found' });
     }
-    
+
 
 
     // Transform questions to match frontend expectations (same as getQuiz)
@@ -517,22 +528,22 @@ export const startQuizAttempt = async (req, res) => {
       type: q.questionType,
       marks: q.points,
       options: q.quiz_options ? q.quiz_options.map(opt => opt.optionText) : [],
-      correctAnswer: q.quiz_options ? 
-        (q.questionType === 'multiple_correct' ? 
+      correctAnswer: q.quiz_options ?
+        (q.questionType === 'multiple_correct' ?
           q.quiz_options.filter(opt => opt.isCorrect).map(opt => opt.optionText) :
           q.quiz_options.find(opt => opt.isCorrect)?.optionText
         ) : null
     }));
-    
+
     // Create final quiz object with questions property
     const finalQuiz = {
       ...quiz,
       questions: transformedQuestions
     };
-    
+
     // Remove the raw quiz_questions to avoid confusion
     delete finalQuiz.quiz_questions;
-    
+
 
 
     // Create attempt record
@@ -660,8 +671,8 @@ export const getQuizDetails = async (req, res) => {
       type: q.questionType,
       marks: q.points,
       options: q.quiz_options ? q.quiz_options.map(opt => opt.optionText) : [],
-      correctAnswer: q.quiz_options ? 
-        (q.questionType === 'multiple_correct' ? 
+      correctAnswer: q.quiz_options ?
+        (q.questionType === 'multiple_correct' ?
           q.quiz_options.filter(opt => opt.isCorrect).map(opt => opt.optionText) :
           q.quiz_options.find(opt => opt.isCorrect)?.optionText
         ) : null
@@ -672,10 +683,10 @@ export const getQuizDetails = async (req, res) => {
       ...quiz,
       questions: transformedQuestions
     };
-    
+
     // Remove the raw quiz_questions to avoid confusion
     delete finalQuiz.quiz_questions;
-    
+
 
 
     res.json({ success: true, quiz: finalQuiz });

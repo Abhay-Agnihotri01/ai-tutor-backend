@@ -45,6 +45,12 @@ import videoRoutes from './routes/videoRoutes.js';
 import tempSetupRoutes from './routes/tempSetupRoutes.js';
 import activityRoutes from './routes/activityRoutes.js';
 
+// New feature routes
+import gamificationRoutes from './routes/gamificationRoutes.js';
+import couponRoutes from './routes/couponRoutes.js';
+import learningRoutes from './routes/learningRoutes.js';
+import preferencesRoutes from './routes/preferencesRoutes.js';
+
 import passport from './config/passport.js';
 
 dotenv.config();
@@ -960,6 +966,12 @@ app.use('/api/admin-communications', adminCommunicationRoutes);
 app.use('/api/group-chat', groupChatRoutes);
 app.use('/api/progress', progressRoutes);
 app.use('/api/videos', videoRoutes);
+
+// New feature routes
+app.use('/api/gamification', gamificationRoutes);
+app.use('/api/coupons', couponRoutes);
+app.use('/api/learning', learningRoutes);
+app.use('/api/preferences', preferencesRoutes);
 
 // Test admin communications endpoint (no auth required)
 app.get('/api/test/admin-communications', (req, res) => {

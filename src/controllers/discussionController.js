@@ -1,5 +1,9 @@
 import supabase from '../config/supabase.js';
+
 import nodemailer from 'nodemailer';
+import NotificationService from '../notifications/NotificationService.js';
+
+const notificationService = new NotificationService();
 
 // Email transporter setup
 const transporter = nodemailer.createTransport({
@@ -41,7 +45,7 @@ export const getCourseDiscussions = async (req, res) => {
           .from('discussion_replies')
           .select('*', { count: 'exact', head: true })
           .eq('discussionid', discussion.id);
-        
+
         discussion.replyCount = replyCount || 0;
       }
     }
@@ -184,12 +188,18 @@ export const createReply = async (req, res) => {
     if (error) throw error;
 
     // Send email notifications
-    if (isInstructorReply) {
-      // Notify original question author
-      await notifyStudent(discussion.userid, discussion, reply, 'instructor_reply');
-    } else {
-      // Notify instructor about student reply
+    if (!isInstructorReply) {
+      // Notify instructor about student reply (keep existing logic or move to NotificationService later if desired)
       await notifyInstructor(discussion.courseid, discussion, 'student_reply', reply);
+    } else {
+      // Notify student about instructor reply
+      // Use NotificationService instead of direct nodemailer
+      notificationService.sendDiscussionReplyNotification(
+        discussion.userid,
+        userId,
+        discussionId,
+        discussion.courseid
+      ).catch(console.error);
     }
 
     res.status(201).json({

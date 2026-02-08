@@ -15,6 +15,15 @@ import AdminCommunicationReply from './AdminCommunicationReply.js';
 import ActivityLog from './ActivityLog.js';
 import AdminSession from './AdminSession.js';
 
+// New models for features
+import UserXP from './UserXP.js';
+import Badge from './Badge.js';
+import UserBadge from './UserBadge.js';
+import Coupon from './Coupon.js';
+import CouponUsage from './CouponUsage.js';
+import LearningGoal from './LearningGoal.js';
+import LearningSession from './LearningSession.js';
+
 // Define associations
 User.hasMany(Course, { foreignKey: 'instructorId', as: 'courses' });
 Course.belongsTo(User, { foreignKey: 'instructorId', as: 'instructor' });
@@ -91,4 +100,75 @@ ActivityLog.belongsTo(User, { foreignKey: 'userId', as: 'User' });
 User.hasMany(AdminSession, { foreignKey: 'adminId', as: 'adminSessions' });
 AdminSession.belongsTo(User, { foreignKey: 'adminId', as: 'admin' });
 
-export { User, Course, Enrollment, Chapter, Video, Rating, Resource, Quiz, Question, QuizAttempt, QuestionResponse, TextLecture, AdminCommunication, AdminCommunicationReply, ActivityLog, AdminSession };
+// ============================================
+// NEW FEATURE ASSOCIATIONS
+// ============================================
+
+// Gamification - UserXP associations
+User.hasOne(UserXP, { foreignKey: 'userId', as: 'xpStats' });
+UserXP.belongsTo(User, { foreignKey: 'userId', as: 'user' });
+
+// Gamification - Badge associations
+User.belongsToMany(Badge, { through: UserBadge, foreignKey: 'userId', as: 'badges' });
+Badge.belongsToMany(User, { through: UserBadge, foreignKey: 'badgeId', as: 'users' });
+
+User.hasMany(UserBadge, { foreignKey: 'userId', as: 'userBadges' });
+UserBadge.belongsTo(User, { foreignKey: 'userId', as: 'user' });
+
+Badge.hasMany(UserBadge, { foreignKey: 'badgeId', as: 'userBadges' });
+UserBadge.belongsTo(Badge, { foreignKey: 'badgeId', as: 'badge' });
+
+// Coupon associations
+User.hasMany(Coupon, { foreignKey: 'instructorId', as: 'coupons' });
+Coupon.belongsTo(User, { foreignKey: 'instructorId', as: 'instructor' });
+
+Course.hasMany(Coupon, { foreignKey: 'courseId', as: 'coupons' });
+Coupon.belongsTo(Course, { foreignKey: 'courseId', as: 'course' });
+
+// CouponUsage associations
+Coupon.hasMany(CouponUsage, { foreignKey: 'couponId', as: 'usages' });
+CouponUsage.belongsTo(Coupon, { foreignKey: 'couponId', as: 'coupon' });
+
+User.hasMany(CouponUsage, { foreignKey: 'userId', as: 'couponUsages' });
+CouponUsage.belongsTo(User, { foreignKey: 'userId', as: 'user' });
+
+Enrollment.hasOne(CouponUsage, { foreignKey: 'enrollmentId', as: 'couponUsage' });
+CouponUsage.belongsTo(Enrollment, { foreignKey: 'enrollmentId', as: 'enrollment' });
+
+// Learning Goal associations
+User.hasOne(LearningGoal, { foreignKey: 'userId', as: 'learningGoal' });
+LearningGoal.belongsTo(User, { foreignKey: 'userId', as: 'user' });
+
+// Learning Session associations
+User.hasMany(LearningSession, { foreignKey: 'userId', as: 'learningSessions' });
+LearningSession.belongsTo(User, { foreignKey: 'userId', as: 'user' });
+
+Course.hasMany(LearningSession, { foreignKey: 'courseId', as: 'learningSessions' });
+LearningSession.belongsTo(Course, { foreignKey: 'courseId', as: 'course' });
+
+export {
+    User,
+    Course,
+    Enrollment,
+    Chapter,
+    Video,
+    Rating,
+    Resource,
+    Quiz,
+    Question,
+    QuizAttempt,
+    QuestionResponse,
+    TextLecture,
+    AdminCommunication,
+    AdminCommunicationReply,
+    ActivityLog,
+    AdminSession,
+    // New models
+    UserXP,
+    Badge,
+    UserBadge,
+    Coupon,
+    CouponUsage,
+    LearningGoal,
+    LearningSession
+};

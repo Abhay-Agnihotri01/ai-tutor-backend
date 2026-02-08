@@ -3,9 +3,11 @@ import PDFDocument from 'pdfkit';
 import fs from 'fs';
 import path from 'path';
 import { fileURLToPath } from 'url';
+import NotificationService from '../notifications/NotificationService.js';
 
 const __filename = fileURLToPath(import.meta.url);
 const __dirname = path.dirname(__filename);
+const notificationService = new NotificationService();
 
 const withTimeout = (promise, timeoutMs = 120000) => {
   return Promise.race([
@@ -155,6 +157,9 @@ const generateCertificateInternal = async (req, res) => {
         error: certError.message
       });
     }
+
+    // Send notification
+    notificationService.sendCertificateNotification(userId, courseId, certificateId).catch(console.error);
 
     res.json({
       success: true,
